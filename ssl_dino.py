@@ -43,6 +43,7 @@ from torch.utils.data import Dataset, DataLoader, Sampler
 from torchvision import transforms
 from PIL import Image
 
+from tqdm import tqdm
 
 # -----------------------------
 # Utilities
@@ -766,26 +767,23 @@ def train(args):
         t0 = time.time()
         loss_meter = 0.0
 
-        for it, (crops, _ages, _rids) in enumerate(train_loader):
-            # crops: list length (2+4), each tensor [B,3,H,W]
+        pbar = tqdm(enumerate(train_loader), total=steps_per_epoch, dynamic_ncols=True)
+        for it, (crops, _ages, _rids) in pbar:
             crops = [c.to(device, non_blocking=True) for c in crops]
 
-            # set lr
             lr = lr_at(global_step)
             for pg in opt.param_groups:
                 pg["lr"] = lr
 
-            # forward
             with torch.cuda.amp.autocast(enabled=True, dtype=amp_dtype):
                 student_out = student(crops)
                 with torch.no_grad():
-                    teacher_out = teacher(crops[:2])  # only globals
+                    teacher_out = teacher(crops[:2])
                 loss = dino_loss(student_out, teacher_out)
 
             opt.zero_grad(set_to_none=True)
             if scaler.is_enabled():
                 scaler.scale(loss).backward()
-                # grad clip
                 scaler.unscale_(opt)
                 torch.nn.utils.clip_grad_norm_(trainable, args.grad_clip)
                 scaler.step(opt)
@@ -795,18 +793,20 @@ def train(args):
                 torch.nn.utils.clip_grad_norm_(trainable, args.grad_clip)
                 opt.step()
 
-            # EMA update teacher
-            # momentum schedule: go from base_m to 1.0
             m = 1.0 - (1.0 - args.ema_momentum) * (math.cos(math.pi * global_step / max(1, total_steps)) + 1) / 2
             ema_update(teacher, student, m)
 
             loss_meter += loss.item()
             global_step += 1
 
-            if args.print_every > 0 and (it + 1) % args.print_every == 0:
+            # tqdm表示更新（表示頻度はここで調整可能）
+            if (it + 1) % args.print_every == 0 or (it + 1) == steps_per_epoch:
                 avg = loss_meter / (it + 1)
-                print(f"[epoch {epoch+1}/{args.epochs}] it {it+1}/{steps_per_epoch} "
-                      f"loss {avg:.4f} lr {lr:.2e} m {m:.4f}")
+                pbar.set_postfix({
+                    "loss": f"{avg:.4f}",
+                    "lr": f"{lr:.2e}",
+                    "m": f"{m:.4f}",
+                })
 
         epoch_time = time.time() - t0
         train_loss = loss_meter / max(1, steps_per_epoch)
