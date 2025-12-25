@@ -14,3 +14,7 @@ git status
 [On branch main
 nothing to commit, working tree clean]
 がでればOK
+
+- conda インストール系のもの
+conda install pytorch torchvision pytorch-cuda=12.1 -c pytorch -c nvidia
+pip install -r requirements.txt

@@ -1,0 +1,12 @@
+# ===== Core =====
+torch>=2.2.0
+torchvision>=0.17.0
+
+# ===== Image / Data =====
+Pillow>=10.0.0
+
+# ===== Utilities =====
+tqdm>=4.66.0
+
+# ===== (Optional but recommended) =====
+numpy>=1.26.0
